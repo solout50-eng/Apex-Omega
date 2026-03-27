@@ -1,0 +1,19 @@
+node_modules/
+.next/
+out/
+build/
+
+# env files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# user data (never commit — contains passwords)
+data/*.json
+
+# misc
+.DS_Store
+Thumbs.db
+*.log
