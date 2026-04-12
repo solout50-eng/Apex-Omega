@@ -328,6 +328,30 @@ footer{padding:36px;border-top:1px solid var(--bd);text-align:center;
   background:var(--gg);color:var(--gm);border:1px solid rgba(201,168,76,.13)}
 .tb2,.lat{font-family:var(--M);font-size:7.5px;color:var(--t3);padding:1px 5px;border-radius:3px;background:var(--rs)}
 
+/* ── THINKING BLOCKS ── */
+.thk{margin-bottom:9px;border:1px solid rgba(201,168,76,.15);border-radius:var(--s);
+  background:rgba(201,168,76,.04);overflow:hidden}
+.thk summary{font-family:var(--M);font-size:9px;letter-spacing:.8px;color:var(--gm);
+  text-transform:uppercase;padding:7px 11px;cursor:pointer;list-style:none;
+  display:flex;align-items:center;gap:6px;user-select:none}
+.thk summary::-webkit-details-marker{display:none}
+.thk summary::before{content:'◈';font-size:8px;color:var(--gd)}
+.thk[open] summary::before{content:'◈';opacity:.6}
+.thk-body{font-family:var(--M);font-size:11.5px;color:var(--t2);padding:8px 11px 10px;
+  line-height:1.7;border-top:1px solid rgba(201,168,76,.1);white-space:pre-wrap;
+  max-height:260px;overflow-y:auto}
+
+/* ── TOOL USE INDICATOR ── */
+.tlind{display:flex;align-items:center;gap:8px;margin-bottom:8px;
+  padding:6px 10px;border:1px solid var(--bd);border-radius:var(--s);
+  background:var(--dp);font-family:var(--M);font-size:10px;color:var(--t2)}
+.tls{flex:1}
+.tlsp{width:12px;height:12px;border:1.5px solid var(--gm);border-top-color:var(--gd);
+  border-radius:50%;animation:sp2 .7s linear infinite;flex-shrink:0}
+@keyframes sp2{to{transform:rotate(360deg)}}
+.tlind.tld .tlsp{display:none}
+.tlind.tld{color:var(--gm);opacity:.7}
+
 /* Markdown */
 .bub.ai p{margin-bottom:7px}.bub.ai p:last-child{margin-bottom:0}
 .bub.ai h1,.bub.ai h2,.bub.ai h3{font-family:var(--F);font-weight:400;color:var(--tx);margin:13px 0 6px;line-height:1.3}
@@ -740,8 +764,8 @@ footer{border-top:1px solid var(--bd);position:relative;z-index:1;padding:40px 4
       <span class="mc-badge">Primary · Streaming</span>
       <span class="mc-icon">✦</span>
       <div class="mc-name">Claude</div>
-      <div class="mc-models">Sonnet 4 · Opus 4 · Haiku 4.5</div>
-      <div class="mc-desc">Anthropic's flagship models. Powers every mode in Apex. Industry-leading reasoning, coding, and nuanced long-form writing.</div>
+      <div class="mc-models">Sonnet 4.6 · Opus 4.6 · Haiku 4.5</div>
+      <div class="mc-desc">Anthropic's latest models. Opus 4.6 with adaptive thinking powers Apex Plus — visible real-time reasoning, web search, and deep analysis.</div>
     </div>
     <div class="mc">
       <span class="mc-badge">Optional · Ultra mode</span>
@@ -754,8 +778,8 @@ footer{border-top:1px solid var(--bd);position:relative;z-index:1;padding:40px 4
       <span class="mc-badge">Optional · Ultra mode</span>
       <span class="mc-icon" style="font-family:var(--S);color:var(--t2);font-size:28px;font-style:normal">◈</span>
       <div class="mc-name">Gemini</div>
-      <div class="mc-models">Google · gemini-1.5-pro</div>
-      <div class="mc-desc">Google's most capable model. Rounds out the Ultra mode trio — the first to finish wins, giving you the fastest answer.</div>
+      <div class="mc-models">Google · gemini-2.0-flash</div>
+      <div class="mc-desc">Google's fastest flagship model. Rounds out the Ultra mode trio — the first to finish wins, giving you the fastest answer.</div>
     </div>
   </div>
 </section>
@@ -953,9 +977,9 @@ footer{border-top:1px solid var(--bd);position:relative;z-index:1;padding:40px 4
       <div style="display:flex;align-items:center;gap:8px">
         <span id="acct">0</span>
         <select id="amsel">
-          <option value="claude-sonnet-4-20250514">Sonnet 4</option>
-          <option value="claude-opus-4-20250514">Opus 4</option>
-          <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
+          <option value="claude-sonnet-4-6">Sonnet 4.6</option>
+          <option value="claude-opus-4-6">Opus 4.6</option>
+          <option value="claude-haiku-4-5">Haiku 4.5</option>
         </select>
         <button id="asbtn" onclick="send()">Send <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M1.5 6h9M6.5 2l4 4-4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </div>
@@ -1563,7 +1587,12 @@ function rlHtml(info) {
 }
 
 // ══ API CALLS — server-side keys, credentials sent via cookie ══
-async function callApex(msgs, sys, stream, onChunk, onDone, onErr) {
+// onThinkingStart() — called when Apex starts thinking
+// onThinking(chunk) — streaming thinking text
+// onThinkingEnd()   — thinking block finished
+// onToolStart(name) — web search / fetch started
+// onToolDone()      — tool result received, continuing
+async function callApex(msgs, sys, stream, onChunk, onDone, onErr, onThinkingStart, onThinking, onThinkingEnd, onToolStart, onToolDone) {
   const model = G('amsel').value;
   let resp;
   try {
@@ -1584,7 +1613,7 @@ async function callApex(msgs, sys, stream, onChunk, onDone, onErr) {
 
   if (stream) {
     const reader=resp.body.getReader(), dec=new TextDecoder();
-    let buf='', full='', outTok=0;
+    let buf='', full='', outTok=0, curBlock=null;
     while(true){
       const{done,value}=await reader.read(); if(done)break;
       buf+=dec.decode(value,{stream:true}); const lines=buf.split('\n'); buf=lines.pop();
@@ -1592,13 +1621,37 @@ async function callApex(msgs, sys, stream, onChunk, onDone, onErr) {
         if(line.startsWith('data:')){
           try{
             const j=JSON.parse(line.slice(5).trim());
-            if(j.type==='content_block_delta'&&j.delta?.type==='text_delta'){const chunk=j.delta.text||'';full+=chunk;onChunk(chunk);}
+
+            // Block start — detect thinking vs tool vs text
+            if(j.type==='content_block_start'){
+              curBlock=j.content_block?.type||null;
+              if(curBlock==='thinking'&&onThinkingStart)onThinkingStart();
+              else if(curBlock==='server_tool_use'&&onToolStart){
+                const nm=j.content_block?.name||'web_search';
+                onToolStart(nm);
+              }
+            }
+
+            // Block deltas
+            if(j.type==='content_block_delta'){
+              const dt=j.delta?.type;
+              if(dt==='text_delta'){const chunk=j.delta.text||'';full+=chunk;if(onChunk)onChunk(chunk);}
+              else if(dt==='thinking_delta'&&onThinking)onThinking(j.delta.thinking||'');
+            }
+
+            // Block end
+            if(j.type==='content_block_stop'){
+              if(curBlock==='thinking'&&onThinkingEnd)onThinkingEnd();
+              else if((curBlock==='web_search_tool_result'||curBlock==='tool_result')&&onToolDone)onToolDone();
+              curBlock=null;
+            }
+
             if(j.type==='message_delta'&&j.usage)outTok=j.usage.output_tokens||0;
           }catch(e){}
         }
       }
     }
-    onDone(full, outTok);
+    if(onDone)onDone(full, outTok);
   } else {
     const d=await resp.json();
     return{text:(d.content||[]).filter(b=>b.type==='text').map(b=>b.text).join(''),tok:d.usage?.output_tokens||0};
@@ -1607,7 +1660,7 @@ async function callApex(msgs, sys, stream, onChunk, onDone, onErr) {
 
 async function callPlus(msgs, sys) {
   const resp=await fetch('/api/chat',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({provider:'claude',model:'claude-opus-4-20250514',max_tokens:cfg.maxTok,temperature:cfg.temp,stream:false,system:sys,messages:msgs})});
+    body:JSON.stringify({provider:'claude',model:'claude-opus-4-6',max_tokens:cfg.maxTok,temperature:cfg.temp,stream:false,system:sys,messages:msgs})});
   if(!resp.ok){const t=await resp.text();const pe=parseErr(t);if(pe?.rl)throw{rl:pe};throw new Error(pe?.msg||'HTTP '+resp.status);}
   const d=await resp.json();
   return{text:(d.content||[]).filter(b=>b.type==='text').map(b=>b.text).join(''),tok:d.usage?.output_tokens||0};
@@ -1632,7 +1685,7 @@ async function callGemini(msgs, sys) {
     parts:[{text:typeof m.content==='string'?m.content:(Array.isArray(m.content)?m.content.find(b=>b.type==='text')?.text||'':'')}]
   }));
   const resp=await fetch('/api/chat',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({provider:'gemini',model:'gemini-1.5-pro',system_instruction:{parts:[{text:sys}]},contents,generationConfig:{temperature:Math.min(cfg.temp,1),maxOutputTokens:cfg.maxTok}})});
+    body:JSON.stringify({provider:'gemini',model:'gemini-2.0-flash',system_instruction:{parts:[{text:sys}]},contents,generationConfig:{temperature:Math.min(cfg.temp,1),maxOutputTokens:cfg.maxTok}})});
   if(!resp.ok){const t=await resp.text();const pe=parseErr(t);throw new Error(pe?.msg||'Gemini HTTP '+resp.status);}
   const d=await resp.json();
   if(d.error)throw new Error(d.error.message||'Gemini error');
@@ -1646,7 +1699,7 @@ async function callUltra(msgs, sys) {
     callGemini(msgs,sys),
     (async()=>{
       const resp=await fetch('/api/chat',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({provider:'claude',model:'claude-opus-4-20250514',max_tokens:cfg.maxTok,temperature:cfg.temp,stream:false,system:sys,messages:msgs})});
+        body:JSON.stringify({provider:'claude',model:'claude-opus-4-6',max_tokens:cfg.maxTok,temperature:cfg.temp,stream:false,system:sys,messages:msgs})});
       if(!resp.ok){const t=await resp.text();const pe=parseErr(t);if(pe?.rl)throw{rl:pe};throw new Error(pe?.msg||'HTTP '+resp.status);}
       const d=await resp.json();
       return{text:(d.content||[]).filter(b=>b.type==='text').map(b=>b.text).join(''),tok:d.usage?.output_tokens||0,provider:'Claude Opus 4'};
@@ -1673,9 +1726,9 @@ async function runBattle(text) {
   const msgs=[...hist,{role:'user',content:text}];
   // Battle: Sonnet vs Opus
   const [r1,r2]=await Promise.allSettled([
-    (async()=>{const resp=await fetch('/api/chat',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:'claude',model:'claude-sonnet-4-20250514',max_tokens:cfg.maxTok,temperature:cfg.temp,stream:false,system:sys,messages:msgs})});const d=await resp.json();return(d.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');})(),
-    (async()=>{const resp=await fetch('/api/chat',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:'claude',model:'claude-opus-4-20250514',max_tokens:cfg.maxTok,temperature:cfg.temp,stream:false,system:sys,messages:msgs})});const d=await resp.json();return(d.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');})()
-  ]);
+    (async()=>{const resp=await fetch('/api/chat',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:'claude',model:'claude-sonnet-4-6',max_tokens:cfg.maxTok,temperature:cfg.temp,stream:false,system:sys,messages:msgs})});const d=await resp.json();return(d.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');})(),
+    (async()=>{const resp=await fetch('/api/chat',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:'claude',model:'claude-opus-4-6',max_tokens:cfg.maxTok,temperature:cfg.temp,stream:false,system:sys,messages:msgs})});const d=await resp.json();return(d.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');})()
+]);
   tl.remove(); tr.remove();
   bMsg('l',r1.status==='fulfilled'?r1.value:'Error: '+r1.reason?.message,false);
   bMsg('r',r2.status==='fulfilled'?r2.value:'Error: '+r2.reason?.message,false);
@@ -1738,28 +1791,64 @@ async function send() {
       const{div,bub}=addAI('',false,{ptLbl:'Apex'});
       const cur=document.createElement('span'); cur.className='scur'; bub.appendChild(cur);
 
+      // Thinking block & tool indicator elements (created on-demand)
+      let thkEl=null, thkBody=null, toolEl=null;
+
       await new Promise((res,rej)=>{
         callApex(hist,sys,true,
+          // onChunk — stream text
           chunk=>{bub.insertBefore(document.createTextNode(chunk),cur);if(cfg.autoscroll)scrollF(false);},
+          // onDone
           (finalText,tok)=>{
+            // Remove streaming cursor & replace raw text with rendered markdown
+            cur.remove();
+            // Collect non-thinking, non-tool nodes and rebuild
+            const kept=[];
+            bub.childNodes.forEach(n=>{
+              if(n.classList?.contains('thk')||n.classList?.contains('tlind'))kept.push(n.cloneNode(true));
+            });
             bub.innerHTML=renderMd(finalText);
+            kept.forEach(n=>bub.insertBefore(n,bub.firstChild));
             const ms=Date.now()-t0; totTok+=tok; totMsg++;
             avgLat=(avgLat*latCnt+ms)/(++latCnt);
             const mm=div.querySelector('.mm');
             if(cfg.showTok)mm.innerHTML+=`<span class="tb2">${tok}tok</span>`;
             if(cfg.showLat)mm.innerHTML+=`<span class="lat">${ms}ms</span>`;
             hist.push({role:'assistant',content:finalText});
-            await saveMessage('assistant',finalText);
+            saveMessage('assistant',finalText);
             autoTitle(); fetchSuggestions();
             updFoot(); updMeter(); res();
           },
+          // onErr
           (errMsg,rlInfo)=>{
             cur.remove();
             if(rlInfo){bub.innerHTML=rlHtml(rlInfo);bub.classList.add('rl');}
             else{bub.textContent=errMsg||'Unknown error';bub.classList.add('er');}
             if(hist.length&&hist[hist.length-1].role==='user')hist.pop();
             updFoot(); rej(new Error(errMsg||'err'));
-          }
+          },
+          // onThinkingStart
+          ()=>{
+            thkEl=document.createElement('details');
+            thkEl.className='thk';
+            thkBody=document.createElement('div');thkBody.className='thk-body';
+            const sum=document.createElement('summary');sum.textContent='Apex is thinking…';
+            thkEl.appendChild(sum);thkEl.appendChild(thkBody);
+            bub.insertBefore(thkEl,cur);
+          },
+          // onThinking
+          chunk=>{if(thkBody)thkBody.appendChild(document.createTextNode(chunk));},
+          // onThinkingEnd
+          ()=>{if(thkEl)thkEl.querySelector('summary').textContent='Reasoning ▾';},
+          // onToolStart
+          name=>{
+            const labels={web_search:'🔍 Searching the web…',web_fetch:'📄 Fetching page…'};
+            toolEl=document.createElement('div');toolEl.className='tlind';
+            toolEl.innerHTML=`<span class="tls">${labels[name]||'Using tool…'}</span><span class="tlsp"></span>`;
+            bub.insertBefore(toolEl,cur);if(cfg.autoscroll)scrollF(false);
+          },
+          // onToolDone
+          ()=>{if(toolEl){toolEl.querySelector('.tls').textContent=toolEl.querySelector('.tls').textContent.replace('…','  ✓');toolEl.classList.add('tld');toolEl=null;}}
         );
       }).catch(()=>{});
 
